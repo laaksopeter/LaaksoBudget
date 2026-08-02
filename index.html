@@ -229,7 +229,7 @@
           <section class="settings-section">
             <h4>Category Budgets</h4>
             <div id="budgetRows"></div>
-            <div class="hint">Use the +/− buttons to adjust each category budget quickly.</div>
+            <div class="hint">Set one amount per category, then choose whether it applies weekly or monthly.</div>
             <div class="field-row" style="align-items:end;">
               <label>
                 <span>New Category</span>
@@ -237,6 +237,30 @@
               </label>
               <button type="button" id="addCategoryBtn" class="secondary-btn">Add Category</button>
             </div>
+          </section>
+
+          <section class="settings-section">
+            <h4>Recurring Bills</h4>
+            <div id="fixedBillsRows"></div>
+            <div class="field-row" style="align-items:end;">
+              <label>
+                <span>Bill name</span>
+                <input type="text" id="newBillName" placeholder="Internet" />
+              </label>
+              <label>
+                <span>Amount</span>
+                <input type="number" id="newBillAmount" step="0.01" min="0" placeholder="80" />
+              </label>
+              <label>
+                <span>Frequency</span>
+                <select id="newBillFrequency">
+                  <option value="monthly">Monthly</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </label>
+              <button type="button" id="addBillBtn" class="secondary-btn">Add Bill</button>
+            </div>
+            <p class="hint">Use this for subscriptions and fixed monthly/weekly payments like internet, phone, insurance, and memberships.</p>
           </section>
 
           <section class="settings-section">

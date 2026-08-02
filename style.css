@@ -51,6 +51,9 @@ select {
 button {
   cursor: pointer;
   min-height: 44px;
+  position: relative;
+  z-index: 1;
+  touch-action: manipulation;
 }
 
 .app-shell {
@@ -148,6 +151,8 @@ p {
 
 .mobile-quick-add {
   margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
 }
 
 .mobile-quick-stack {
@@ -421,12 +426,27 @@ select {
 }
 
 .budget-row,
-.preset-row {
+.preset-row,
+.fixed-bill-row {
   display: grid;
   gap: 8px;
   grid-template-columns: 1.2fr 1fr 1fr auto;
   align-items: center;
   margin-bottom: 8px;
+}
+
+.fixed-bill-row {
+  grid-template-columns: 1.2fr 1fr auto;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fixed-bill-row:last-child {
+  border-bottom: none;
+}
+
+.budget-frequency {
+  display: grid;
 }
 
 .budget-row input,
@@ -452,6 +472,20 @@ select {
   color: var(--muted);
   font-size: 0.9rem;
   margin-top: 2px;
+}
+
+.history-summary-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--panel-2), rgba(56, 189, 248, 0.16));
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.history-summary-card strong {
+  color: var(--text);
 }
 
 .toast {

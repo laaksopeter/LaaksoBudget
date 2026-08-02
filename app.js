@@ -31,6 +31,7 @@ const defaultState = {
     },
     overallBudget: { weekly: 300, monthly: 1200 },
     categories: ['Dining out', 'Groceries', 'Transportation', 'Entertainment', 'Utilities', 'Shopping', 'Health'],
+    fixedBills: [],
     quickPresets: [
       { label: 'Coffee', amount: 4.5 },
       { label: 'Gas', amount: 40 },
@@ -102,8 +103,13 @@ const els = {
   newBudgetCategory: document.getElementById('newBudgetCategory'),
   addCategoryBtn: document.getElementById('addCategoryBtn'),
   budgetRows: document.getElementById('budgetRows'),
+  fixedBillsRows: document.getElementById('fixedBillsRows'),
   presetRows: document.getElementById('presetRows'),
   addPresetBtn: document.getElementById('addPresetBtn'),
+  addBillBtn: document.getElementById('addBillBtn'),
+  newBillName: document.getElementById('newBillName'),
+  newBillAmount: document.getElementById('newBillAmount'),
+  newBillFrequency: document.getElementById('newBillFrequency'),
   exportBtn: document.getElementById('exportBtn'),
   syncSheetsBtn: document.getElementById('syncSheetsBtn'),
   importFile: document.getElementById('importFile'),
@@ -220,15 +226,26 @@ function computeSummary(timeframe) {
   const incomes = getFilteredTransactions(timeframe, 'income');
   const totalExpenses = expenses.reduce((sum, item) => sum + Number(item.amount), 0);
   const totalIncome = incomes.reduce((sum, item) => sum + Number(item.amount), 0);
+  const fixedBillsTotal = (state.settings.fixedBills || []).reduce((sum, bill) => {
+    const amount = Number(bill.amount || 0);
+    if (bill.frequency === 'weekly') {
+      return sum + amount;
+    }
+    return sum + (timeframe === 'month' ? amount : amount / 4.33);
+  }, 0);
   const budgetLimit = timeframe === 'month'
     ? Number(state.settings.overallBudget.monthly || 0)
     : Number(state.settings.overallBudget.weekly || 0);
-  const budgetRemaining = budgetLimit - totalExpenses;
+  const availableForSpending = Math.max(0, totalIncome - fixedBillsTotal);
+  const budgetRemaining = Math.max(0, budgetLimit - totalExpenses - fixedBillsTotal);
   return {
     totalIncome,
     totalExpenses,
     net: totalIncome - totalExpenses,
     budgetRemaining,
+    fixedBillsTotal,
+    availableForSpending,
+    unallocated: Math.max(0, availableForSpending - totalExpenses),
     dailyAllowance: budgetRemaining / getDaysLeft(timeframe)
   };
 }
@@ -244,12 +261,18 @@ function init() {
   renderSettings();
   renderAll();
   registerServiceWorker();
-  els.entryAmount.focus();
+  if (els.mobileAmount) {
+    els.mobileAmount.focus();
+  } else if (els.entryAmount) {
+    els.entryAmount.focus();
+  }
 }
 
 function setDefaultDate() {
   const today = new Date().toISOString().split('T')[0];
-  els.entryDate.value = today;
+  if (els.entryDate) {
+    els.entryDate.value = today;
+  }
 }
 
 function setDefaultGoalDate() {
@@ -269,18 +292,34 @@ function restoreUIState() {
 }
 
 function bindEvents() {
-  els.entryForm.addEventListener('submit', handleEntrySubmit);
-  els.clearFormBtn.addEventListener('click', resetEntryForm);
-  els.mobileSaveBtn.addEventListener('click', handleMobileQuickAdd);
-  els.mobileClearBtn.addEventListener('click', resetMobileQuickAdd);
-  els.settingsBtn.addEventListener('click', openSettings);
-  els.closeSettingsBtn.addEventListener('click', closeSettings);
-  els.settingsModal.addEventListener('click', (event) => {
-    if (event.target === els.settingsModal) {
-      closeSettings();
-    }
-  });
-  els.themeToggle.addEventListener('click', toggleTheme);
+  if (els.entryForm) {
+    els.entryForm.addEventListener('submit', handleEntrySubmit);
+  }
+  if (els.clearFormBtn) {
+    els.clearFormBtn.addEventListener('click', resetEntryForm);
+  }
+  if (els.mobileSaveBtn) {
+    els.mobileSaveBtn.addEventListener('click', handleMobileQuickAdd);
+  }
+  if (els.mobileClearBtn) {
+    els.mobileClearBtn.addEventListener('click', resetMobileQuickAdd);
+  }
+  if (els.settingsBtn) {
+    els.settingsBtn.addEventListener('click', openSettings);
+  }
+  if (els.closeSettingsBtn) {
+    els.closeSettingsBtn.addEventListener('click', closeSettings);
+  }
+  if (els.settingsModal) {
+    els.settingsModal.addEventListener('click', (event) => {
+      if (event.target === els.settingsModal) {
+        closeSettings();
+      }
+    });
+  }
+  if (els.themeToggle) {
+    els.themeToggle.addEventListener('click', toggleTheme);
+  }
   document.querySelectorAll('.chip').forEach((chip) => {
     chip.addEventListener('click', () => {
       state.ui.timeframe = chip.dataset.range;
@@ -291,15 +330,20 @@ function bindEvents() {
       renderAll();
     });
   });
-  els.entryType.addEventListener('change', () => {
-    renderCategoryOptions();
-  });
-  els.mobileType.addEventListener('change', () => {
-    renderCategoryOptions();
-  });
+  if (els.entryType) {
+    els.entryType.addEventListener('change', () => {
+      renderCategoryOptions();
+    });
+  }
+  if (els.mobileType) {
+    els.mobileType.addEventListener('change', () => {
+      renderCategoryOptions();
+    });
+  }
   els.historyFilter.addEventListener('change', renderHistory);
   els.historySearch.addEventListener('input', renderHistory);
   els.addPresetBtn.addEventListener('click', addPresetRow);
+  els.addBillBtn.addEventListener('click', addFixedBill);
   els.exportBtn.addEventListener('click', exportToCsv);
   els.goalsForm.addEventListener('submit', handleGoalSubmit);
   els.clearGoalBtn.addEventListener('click', clearGoalForm);
@@ -376,11 +420,17 @@ function populateCategorySelect(select, type) {
 }
 
 function renderCategoryOptions() {
-  const type = els.entryType.value === 'income' || els.mobileType.value === 'income' ? 'income' : 'expense';
-  populateCategorySelect(els.entryCategory, type);
-  populateCategorySelect(els.mobileCategory, type);
+  const typeValue = els.entryType?.value || els.mobileType?.value || 'expense';
+  const type = typeValue === 'income' ? 'income' : 'expense';
 
-  if (editingId) {
+  if (els.entryCategory) {
+    populateCategorySelect(els.entryCategory, type);
+  }
+  if (els.mobileCategory) {
+    populateCategorySelect(els.mobileCategory, type);
+  }
+
+  if (editingId && els.entryCategory) {
     const entry = state.transactions.find((item) => item.id === editingId);
     if (entry) {
       els.entryCategory.value = entry.category;
@@ -389,6 +439,7 @@ function renderCategoryOptions() {
 }
 
 function renderQuickPresets() {
+  if (!els.quickPresets) return;
   els.quickPresets.innerHTML = '';
   state.settings.quickPresets.forEach((preset) => {
     const button = document.createElement('button');
@@ -428,6 +479,23 @@ function renderSummary() {
   els.budgetLeftSummary.textContent = formatCurrency(Math.max(0, summary.budgetRemaining));
   els.dailyAllowance.textContent = formatCurrency(summary.dailyAllowance);
   els.budgetRemaining.textContent = formatCurrency(Math.max(0, summary.budgetRemaining));
+  els.budgetStatusList.innerHTML = [
+    `<div class="budget-item"><div class="budget-item-top"><strong>Locked bills</strong><span>${formatCurrency(summary.fixedBillsTotal)}</span></div></div>`,
+    `<div class="budget-item"><div class="budget-item-top"><strong>Available after bills</strong><span>${formatCurrency(summary.availableForSpending)}</span></div></div>`,
+    `<div class="budget-item"><div class="budget-item-top"><strong>Unallocated this ${state.ui.timeframe === 'month' ? 'month' : 'week'}</strong><span>${formatCurrency(summary.unallocated)}</span></div></div>`
+  ].join('');
+}
+
+function resolveBudgetLimit(category, timeframe) {
+  const budget = state.settings.budgets[category] || {};
+  const amount = Number(budget.amount ?? budget.weekly ?? budget.monthly ?? 0);
+  const frequency = budget.frequency || (budget.monthly !== undefined && budget.weekly === undefined ? 'monthly' : (budget.weekly !== undefined && budget.monthly === undefined ? 'weekly' : 'monthly'));
+
+  if (frequency === 'weekly') {
+    return timeframe === 'week' ? amount : amount * 4.33;
+  }
+
+  return timeframe === 'month' ? amount : amount / 4.33;
 }
 
 function renderBudgetHealth() {
@@ -438,6 +506,7 @@ function renderBudgetHealth() {
     accumulator[category] = (accumulator[category] || 0) + Number(entry.amount || 0);
     return accumulator;
   }, {});
+  const summary = computeSummary(timeframe);
 
   const limitKey = timeframe === 'month' ? 'monthly' : 'weekly';
   const overallLimit = Number(state.settings.overallBudget[limitKey] || 0);
@@ -445,8 +514,7 @@ function renderBudgetHealth() {
   const overallPercent = overallLimit > 0 ? Math.min(100, (overallSpent / overallLimit) * 100) : 0;
 
   const items = Object.keys(state.settings.budgets).map((category) => {
-    const budget = state.settings.budgets[category] || {};
-    const limit = Number(budget[limitKey] || 0);
+    const limit = resolveBudgetLimit(category, timeframe);
     const spent = categoryTotals[category] || 0;
     const percent = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
     let tone = 'green';
@@ -455,7 +523,14 @@ function renderBudgetHealth() {
     return { category, spent, limit, percent, tone };
   });
 
+  const summaryItems = [
+    `<div class="budget-item"><div class="budget-item-top"><strong>Locked bills</strong><span>${formatCurrency(summary.fixedBillsTotal)}</span></div></div>`,
+    `<div class="budget-item"><div class="budget-item-top"><strong>Available after bills</strong><span>${formatCurrency(summary.availableForSpending)}</span></div></div>`,
+    `<div class="budget-item"><div class="budget-item-top"><strong>Unallocated this ${timeframe === 'month' ? 'month' : 'week'}</strong><span>${formatCurrency(summary.unallocated)}</span></div></div>`
+  ];
+
   const html = [
+    ...summaryItems,
     `<div class="budget-item">`,
     `<div class="budget-item-top"><strong>Overall</strong><span>${formatCurrency(overallSpent)} / ${formatCurrency(overallLimit)}</span></div>`,
     `<div class="progress-track"><div class="progress-fill ${overallPercent >= 90 || overallSpent > overallLimit ? 'red' : overallPercent >= 75 ? 'orange' : 'green'}" style="width:${Math.min(100, overallPercent)}%"></div></div>`,
@@ -533,12 +608,20 @@ function renderHistory() {
     return haystack.includes(search);
   });
 
+  const summary = computeSummary(timeframe);
+  const historySummary = `
+    <div class="history-summary-card">
+      <strong>Unallocated ${timeframe === 'month' ? 'month' : 'week'} balance</strong>
+      <p class="hint">${formatCurrency(summary.unallocated)} left after bills and spending</p>
+    </div>
+  `;
+
   if (!filtered.length) {
-    els.transactionList.innerHTML = '<p class="hint">No matching transactions yet.</p>';
+    els.transactionList.innerHTML = `${historySummary}<p class="hint">No matching transactions yet.</p>`;
     return;
   }
 
-  els.transactionList.innerHTML = filtered
+  els.transactionList.innerHTML = `${historySummary}${filtered
     .sort((a, b) => new Date(b.date) - new Date(a.date))
     .map((transaction) => `
       <div class="transaction-item">
@@ -553,7 +636,7 @@ function renderHistory() {
         </div>
       </div>
     `)
-    .join('');
+    .join('')}`;
 
   els.transactionList.querySelectorAll('[data-action]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -650,21 +733,37 @@ function renderSettings() {
   els.webhookUrl.value = state.settings.webhookUrl || '';
 
   els.budgetRows.innerHTML = Object.keys(state.settings.budgets)
-    .map((category) => `
-      <div class="budget-row">
-        <label><span>${category}</span></label>
-        <div class="budget-adjust-group">
-          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="weekly" data-direction="decrement">−</button>
-          <input type="number" inputmode="decimal" data-category="${category}" data-field="weekly" value="${state.settings.budgets[category].weekly || 0}" step="0.01" min="0" />
-          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="weekly" data-direction="increment">+</button>
-        </div>
-        <div class="budget-adjust-group">
-          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="monthly" data-direction="decrement">−</button>
-          <input type="number" inputmode="decimal" data-category="${category}" data-field="monthly" value="${state.settings.budgets[category].monthly || 0}" step="0.01" min="0" />
-          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="monthly" data-direction="increment">+</button>
-        </div>
-        <button type="button" class="ghost-btn" data-remove-category="${category}">Remove</button>
-      </div>`)
+    .map((category) => {
+      const budget = state.settings.budgets[category] || {};
+      const amount = Number(budget.amount ?? budget.weekly ?? budget.monthly ?? 0);
+      const frequency = budget.frequency || (budget.monthly !== undefined && budget.weekly === undefined ? 'monthly' : (budget.weekly !== undefined && budget.monthly === undefined ? 'weekly' : 'monthly'));
+      return `
+        <div class="budget-row">
+          <label><span>${category}</span></label>
+          <div class="budget-adjust-group">
+            <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-direction="decrement">−</button>
+            <input type="number" inputmode="decimal" data-category="${category}" data-field="amount" value="${amount}" step="0.01" min="0" />
+            <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-direction="increment">+</button>
+          </div>
+          <label class="budget-frequency">
+            <select data-category="${category}" data-field="frequency">
+              <option value="weekly" ${frequency === 'weekly' ? 'selected' : ''}>Weekly</option>
+              <option value="monthly" ${frequency === 'monthly' ? 'selected' : ''}>Monthly</option>
+            </select>
+          </label>
+          <button type="button" class="ghost-btn" data-remove-category="${category}">Remove</button>
+        </div>`;
+    })
+    .join('');
+
+  els.fixedBillsRows.innerHTML = (state.settings.fixedBills || [])
+    .map((bill, index) => `
+      <div class="fixed-bill-row">
+        <strong>${bill.name}</strong>
+        <span>${formatCurrency(bill.amount)} • ${bill.frequency === 'weekly' ? 'Weekly' : 'Monthly'}</span>
+        <button type="button" class="ghost-btn" data-remove-bill="${index}">Remove</button>
+      </div>
+    `)
     .join('');
 
   els.presetRows.innerHTML = state.settings.quickPresets.map((preset, index) => `
@@ -678,9 +777,12 @@ function renderSettings() {
   els.budgetRows.querySelectorAll('input').forEach((input) => {
     input.addEventListener('input', handleBudgetInput);
   });
+  els.budgetRows.querySelectorAll('select').forEach((select) => {
+    select.addEventListener('change', handleBudgetInput);
+  });
   els.budgetRows.querySelectorAll('[data-adjust-budget]').forEach((button) => {
     button.addEventListener('click', () => {
-      adjustCategoryBudget(button.dataset.adjustBudget, button.dataset.field, button.dataset.direction);
+      adjustCategoryBudget(button.dataset.adjustBudget, button.dataset.direction);
     });
   });
   els.budgetRows.querySelectorAll('[data-remove-category]').forEach((button) => {
@@ -689,6 +791,14 @@ function renderSettings() {
       saveState();
       renderSettings();
       renderAll();
+    });
+  });
+  els.fixedBillsRows.querySelectorAll('[data-remove-bill]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const index = Number(button.dataset.removeBill);
+      state.settings.fixedBills.splice(index, 1);
+      saveState();
+      renderSettings();
     });
   });
   els.presetRows.querySelectorAll('input').forEach((input) => {
@@ -710,20 +820,26 @@ function handleBudgetInput(event) {
   if (!state.settings.budgets[category]) {
     state.settings.budgets[category] = {};
   }
-  state.settings.budgets[category][field] = Number(target.value || 0);
+
+  if (field === 'amount') {
+    state.settings.budgets[category].amount = Number(target.value || 0);
+  } else if (field === 'frequency') {
+    state.settings.budgets[category].frequency = target.value;
+  }
+
   saveState();
   renderSummary();
   renderBudgetHealth();
 }
 
-function adjustCategoryBudget(category, field, direction) {
+function adjustCategoryBudget(category, direction) {
   if (!state.settings.budgets[category]) {
-    state.settings.budgets[category] = { weekly: 0, monthly: 0 };
+    state.settings.budgets[category] = { amount: 0, frequency: 'monthly' };
   }
 
   const step = 5;
-  const currentValue = Number(state.settings.budgets[category][field] || 0);
-  state.settings.budgets[category][field] = direction === 'increment'
+  const currentValue = Number(state.settings.budgets[category].amount || 0);
+  state.settings.budgets[category].amount = direction === 'increment'
     ? currentValue + step
     : Math.max(0, currentValue - step);
 
@@ -751,6 +867,25 @@ function addPresetRow() {
   saveState();
   renderSettings();
   renderQuickPresets();
+}
+
+function addFixedBill() {
+  const name = els.newBillName?.value.trim();
+  const amount = Number(els.newBillAmount?.value || 0);
+  if (!name || !amount) return;
+
+  state.settings.fixedBills.push({
+    name,
+    amount,
+    frequency: els.newBillFrequency?.value || 'monthly'
+  });
+
+  saveState();
+  renderSettings();
+  if (els.newBillName) els.newBillName.value = '';
+  if (els.newBillAmount) els.newBillAmount.value = '';
+  if (els.newBillFrequency) els.newBillFrequency.value = 'monthly';
+  showToast('Recurring bill added.');
 }
 
 function submitEntryPayload(payload) {
@@ -795,15 +930,15 @@ function submitEntryPayload(payload) {
 
 function handleEntrySubmit(event) {
   event.preventDefault();
-  const amount = Number(els.entryAmount.value || 0);
-  const customCategory = els.entryCustomCategory.value.trim();
-  const category = customCategory || els.entryCategory.value || 'Uncategorized';
+  const amount = Number(els.entryAmount?.value || els.mobileAmount?.value || 0);
+  const customCategory = (els.entryCustomCategory?.value || '').trim();
+  const category = customCategory || els.entryCategory?.value || els.mobileCategory?.value || 'Uncategorized';
   const entry = submitEntryPayload({
     amount,
-    type: els.entryType.value,
+    type: els.entryType?.value || els.mobileType?.value || 'expense',
     category,
-    note: els.entryNote.value,
-    date: els.entryDate.value
+    note: els.entryNote?.value || els.mobileNote?.value || '',
+    date: els.entryDate?.value || new Date().toISOString().split('T')[0]
   });
 
   if (entry) {
@@ -814,14 +949,14 @@ function handleEntrySubmit(event) {
 }
 
 function handleMobileQuickAdd() {
-  const amount = Number(els.mobileAmount.value || 0);
-  const category = els.mobileCategory.value || 'Uncategorized';
+  const amount = Number(els.mobileAmount?.value || 0);
+  const category = els.mobileCategory?.value || 'Uncategorized';
   const entry = submitEntryPayload({
     amount,
-    type: els.mobileType.value,
+    type: els.mobileType?.value || 'expense',
     category,
-    note: els.mobileNote.value,
-    date: els.entryDate.value || new Date().toISOString().split('T')[0]
+    note: els.mobileNote?.value || '',
+    date: els.entryDate?.value || new Date().toISOString().split('T')[0]
   });
 
   if (entry) {
@@ -831,12 +966,22 @@ function handleMobileQuickAdd() {
 }
 
 function resetEntryForm() {
-  els.entryForm.reset();
+  if (els.entryForm) {
+    els.entryForm.reset();
+  }
   setDefaultDate();
-  els.entryType.value = 'expense';
-  els.entryCategory.value = '';
-  els.entryCustomCategory.value = '';
-  els.entryAmount.focus();
+  if (els.entryType) {
+    els.entryType.value = 'expense';
+  }
+  if (els.entryCategory) {
+    els.entryCategory.value = '';
+  }
+  if (els.entryCustomCategory) {
+    els.entryCustomCategory.value = '';
+  }
+  if (els.entryAmount) {
+    els.entryAmount.focus();
+  }
   editingId = null;
   renderCategoryOptions();
 }
