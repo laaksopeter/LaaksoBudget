@@ -38,6 +38,8 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 button,
@@ -48,6 +50,7 @@ select {
 
 button {
   cursor: pointer;
+  min-height: 44px;
 }
 
 .app-shell {
@@ -238,9 +241,10 @@ select {
 .quick-presets button {
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: var(--panel-2);
   color: var(--text);
+  min-height: 44px;
 }
 
 .budget-health {
@@ -353,6 +357,7 @@ select {
   justify-content: center;
   padding: 16px;
   z-index: 1000;
+  overflow-y: auto;
 }
 
 .modal.hidden,
@@ -363,6 +368,7 @@ select {
 .modal-card {
   width: min(760px, 100%);
   max-height: min(90vh, 860px);
+  margin: auto;
   background: var(--panel);
   border-radius: 22px;
   border: 1px solid var(--border);
@@ -384,6 +390,7 @@ select {
   padding: 20px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  flex: 1 1 auto;
 }
 
 .settings-section {
@@ -443,6 +450,48 @@ canvas {
 }
 
 @media (max-width: 640px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .hero {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-card h2 {
+    font-size: 1.25rem;
+  }
+
+  .hero-actions,
+  .history-controls,
+  .settings-actions {
+    width: 100%;
+  }
+
+  .hero-actions > *,
+  .settings-actions > * {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .budget-row,
+  .preset-row {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
   .app-shell {
     padding: 14px;
   }

@@ -63,6 +63,7 @@ const els = {
   presetRows: document.getElementById('presetRows'),
   addPresetBtn: document.getElementById('addPresetBtn'),
   exportBtn: document.getElementById('exportBtn'),
+  syncSheetsBtn: document.getElementById('syncSheetsBtn'),
   importFile: document.getElementById('importFile'),
   resetBtn: document.getElementById('resetBtn'),
   overallWeeklyBudget: document.getElementById('overallWeeklyBudget'),
@@ -245,6 +246,9 @@ function bindEvents() {
   els.historySearch.addEventListener('input', renderHistory);
   els.addPresetBtn.addEventListener('click', addPresetRow);
   els.exportBtn.addEventListener('click', exportToCsv);
+  els.syncSheetsBtn.addEventListener('click', () => {
+    syncAllTransactionsToGoogleSheets();
+  });
   els.importFile.addEventListener('change', importFromCsv);
   els.resetBtn.addEventListener('click', resetData);
   els.incomeAmount.addEventListener('input', () => {
@@ -658,15 +662,49 @@ function deleteTransaction(id) {
 
 async function syncToGoogleSheets(entry) {
   const webhookUrl = state.settings.webhookUrl?.trim();
-  if (!webhookUrl) return;
+  if (!webhookUrl) {
+    showToast('Add a Google Sheets webhook URL first.');
+    return;
+  }
+
   try {
-    await fetch(webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entry, app: 'LaaksoBudget' })
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
   } catch (error) {
     console.warn('Google Sheets sync failed.', error);
+    showToast('Google Sheets sync failed.');
+  }
+}
+
+async function syncAllTransactionsToGoogleSheets() {
+  const webhookUrl = state.settings.webhookUrl?.trim();
+  if (!webhookUrl) {
+    showToast('Add a Google Sheets webhook URL first.');
+    return;
+  }
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: state.transactions, app: 'LaaksoBudget', mode: 'full-sync' })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    showToast('Pushed to Google Sheets.');
+  } catch (error) {
+    console.warn('Google Sheets full sync failed.', error);
+    showToast('Google Sheets sync failed.');
   }
 }
 
