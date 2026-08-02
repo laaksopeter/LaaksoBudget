@@ -362,11 +362,14 @@ select {
 
 .modal-card {
   width: min(760px, 100%);
+  max-height: min(90vh, 860px);
   background: var(--panel);
   border-radius: 22px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -379,6 +382,8 @@ select {
 
 .modal-content {
   padding: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .settings-section {
