@@ -1,4 +1,19 @@
 const STORAGE_KEY = 'laakso-budget-app-v1';
+const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxWvQV8-5AgSDt7darDkGdSj59VKAYSjY0_lQkG14i5imfMC__XP50lq_fUMLnR2ksw/exec';
+
+function resolveSheetId(value) {
+  const trimmed = value?.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return '';
+  return trimmed;
+}
+
+function resolveWebhookUrl(value) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return DEFAULT_APPS_SCRIPT_URL;
+}
 
 const defaultState = {
   transactions: [],
@@ -21,7 +36,7 @@ const defaultState = {
       { label: 'Gas', amount: 40 },
       { label: 'Groceries', amount: 50 }
     ],
-    webhookUrl: 'https://script.google.com/macros/s/AKfycbxWvQV8-5AgSDt7darDkGdSj59VKAYSjY0_lQkG14i5imfMC__XP50lq_fUMLnR2ksw/exec'
+    webhookUrl: ''
   },
   ui: {
     theme: 'dark',
@@ -858,9 +873,12 @@ function deleteTransaction(id) {
 }
 
 async function syncToGoogleSheets(entry) {
-  const webhookUrl = state.settings.webhookUrl?.trim();
-  if (!webhookUrl) {
-    showToast('Add a Google Sheets webhook URL first.');
+  const inputValue = state.settings.webhookUrl?.trim();
+  const sheetId = resolveSheetId(inputValue);
+  const webhookUrl = resolveWebhookUrl(inputValue);
+
+  if (!webhookUrl || (!sheetId && !/^https?:\/\//i.test(inputValue || ''))) {
+    showToast('Add your Google Sheets spreadsheet ID first.');
     return;
   }
 
@@ -870,7 +888,7 @@ async function syncToGoogleSheets(entry) {
       mode: 'cors',
       credentials: 'omit',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ entry, app: 'LaaksoBudget' })
+      body: JSON.stringify({ entry, app: 'LaaksoBudget', sheetId })
     });
 
     if (!response.ok) {
@@ -879,14 +897,17 @@ async function syncToGoogleSheets(entry) {
     }
   } catch (error) {
     console.warn('Google Sheets sync failed.', error);
-    showToast('Google Sheets sync failed.');
+    showToast(`Google Sheets sync failed: ${error.message}`);
   }
 }
 
 async function syncAllTransactionsToGoogleSheets() {
-  const webhookUrl = state.settings.webhookUrl?.trim();
-  if (!webhookUrl) {
-    showToast('Add a Google Sheets webhook URL first.');
+  const inputValue = state.settings.webhookUrl?.trim();
+  const sheetId = resolveSheetId(inputValue);
+  const webhookUrl = resolveWebhookUrl(inputValue);
+
+  if (!webhookUrl || (!sheetId && !/^https?:\/\//i.test(inputValue || ''))) {
+    showToast('Add your Google Sheets spreadsheet ID first.');
     return;
   }
 
@@ -896,7 +917,7 @@ async function syncAllTransactionsToGoogleSheets() {
       mode: 'cors',
       credentials: 'omit',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ entries: state.transactions, app: 'LaaksoBudget', mode: 'full-sync' })
+      body: JSON.stringify({ entries: state.transactions, app: 'LaaksoBudget', mode: 'full-sync', sheetId })
     });
 
     if (!response.ok) {
