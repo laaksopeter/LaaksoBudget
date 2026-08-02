@@ -146,6 +146,22 @@ p {
   border-color: transparent;
 }
 
+.mobile-quick-add {
+  margin-bottom: 16px;
+}
+
+.mobile-quick-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-quick-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.1fr 0.7fr 1fr;
+  align-items: end;
+}
+
 .summary-grid,
 .dashboard-grid {
   display: grid;
@@ -510,6 +526,15 @@ canvas {
   .hero {
     padding: 16px;
     border-radius: 18px;
+  }
+
+  .mobile-quick-row {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-presets button {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: center;
   }
 
   .summary-grid {

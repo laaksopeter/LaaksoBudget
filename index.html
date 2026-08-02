@@ -32,6 +32,50 @@
         </div>
       </header>
 
+      <section class="card mobile-quick-add">
+        <div class="section-heading">
+          <div>
+            <h3>Quick Add on the Go</h3>
+            <p>Log spending in seconds with big tap targets</p>
+          </div>
+        </div>
+        <div class="mobile-quick-stack">
+          <div class="mobile-quick-row">
+            <label class="full-width">
+              <span>Amount</span>
+              <input
+                type="number"
+                id="mobileAmount"
+                step="0.01"
+                min="0"
+                inputmode="decimal"
+                placeholder="0.00"
+              />
+            </label>
+            <label>
+              <span>Type</span>
+              <select id="mobileType">
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            </label>
+            <label>
+              <span>Category</span>
+              <select id="mobileCategory"></select>
+            </label>
+          </div>
+          <label class="full-width">
+            <span>Note</span>
+            <input type="text" id="mobileNote" placeholder="Coffee, gas, groceries..." />
+          </label>
+          <div class="quick-presets" id="mobileQuickPresets"></div>
+          <div class="actions">
+            <button type="button" id="mobileSaveBtn" class="primary-btn">Add Entry</button>
+            <button type="button" id="mobileClearBtn" class="secondary-btn">Clear</button>
+          </div>
+        </div>
+      </section>
+
       <section class="summary-grid">
         <article class="card summary-card">
           <p>Income</p>
@@ -52,62 +96,6 @@
       </section>
 
       <section class="dashboard-grid">
-        <div class="card">
-          <div class="section-heading">
-            <div>
-              <h3>Quick Entry</h3>
-              <p>Fast capture for everyday spending</p>
-            </div>
-          </div>
-          <form id="entryForm" class="entry-form">
-            <div class="field-row">
-              <label>
-                <span>Date</span>
-                <input type="date" id="entryDate" required />
-              </label>
-              <label>
-                <span>Amount</span>
-                <input
-                  type="number"
-                  id="entryAmount"
-                  step="0.01"
-                  min="0"
-                  inputmode="decimal"
-                  required
-                />
-              </label>
-            </div>
-            <div class="field-row">
-              <label>
-                <span>Type</span>
-                <select id="entryType">
-                  <option value="expense">Expense</option>
-                  <option value="income">Income</option>
-                </select>
-              </label>
-              <label>
-                <span>Category</span>
-                <select id="entryCategory"></select>
-              </label>
-            </div>
-            <div class="field-row">
-              <label class="full-width">
-                <span>Custom Category</span>
-                <input type="text" id="entryCustomCategory" placeholder="e.g. Travel" />
-              </label>
-            </div>
-            <label class="full-width">
-              <span>Note</span>
-              <input type="text" id="entryNote" placeholder="Coffee with Sam" />
-            </label>
-            <div class="quick-presets" id="quickPresets"></div>
-            <div class="actions">
-              <button type="submit" class="primary-btn">Save Entry</button>
-              <button type="button" id="clearFormBtn" class="secondary-btn">Clear</button>
-            </div>
-          </form>
-        </div>
-
         <div class="card">
           <div class="section-heading">
             <div>

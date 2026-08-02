@@ -62,6 +62,13 @@ const els = {
   entryAmount: document.getElementById('entryAmount'),
   entryType: document.getElementById('entryType'),
   entryCategory: document.getElementById('entryCategory'),
+  mobileAmount: document.getElementById('mobileAmount'),
+  mobileType: document.getElementById('mobileType'),
+  mobileCategory: document.getElementById('mobileCategory'),
+  mobileNote: document.getElementById('mobileNote'),
+  mobileQuickPresets: document.getElementById('mobileQuickPresets'),
+  mobileSaveBtn: document.getElementById('mobileSaveBtn'),
+  mobileClearBtn: document.getElementById('mobileClearBtn'),
   entryCustomCategory: document.getElementById('entryCustomCategory'),
   entryNote: document.getElementById('entryNote'),
   quickPresets: document.getElementById('quickPresets'),
@@ -264,6 +271,8 @@ function restoreUIState() {
 function bindEvents() {
   els.entryForm.addEventListener('submit', handleEntrySubmit);
   els.clearFormBtn.addEventListener('click', resetEntryForm);
+  els.mobileSaveBtn.addEventListener('click', handleMobileQuickAdd);
+  els.mobileClearBtn.addEventListener('click', resetMobileQuickAdd);
   els.settingsBtn.addEventListener('click', openSettings);
   els.closeSettingsBtn.addEventListener('click', closeSettings);
   els.settingsModal.addEventListener('click', (event) => {
@@ -283,6 +292,9 @@ function bindEvents() {
     });
   });
   els.entryType.addEventListener('change', () => {
+    renderCategoryOptions();
+  });
+  els.mobileType.addEventListener('change', () => {
     renderCategoryOptions();
   });
   els.historyFilter.addEventListener('change', renderHistory);
@@ -329,6 +341,7 @@ function renderAll() {
   renderCategoryOptions();
   renderSummary();
   renderGoalResult();
+  renderMobileQuickPresets();
   renderGoalsDashboard();
   renderBudgetHealth();
   renderChart();
@@ -337,27 +350,36 @@ function renderAll() {
   renderQuickPresets();
 }
 
-function renderCategoryOptions() {
-  const type = els.entryType.value;
+function populateCategorySelect(select, type) {
   const categories = [...new Set([...state.settings.categories, ...state.transactions.map((item) => item.type === 'expense' ? item.category : null).filter(Boolean)])];
   const options = type === 'income'
     ? ['Salary', 'Freelance', 'Refund', ...categories]
     : categories;
-  els.entryCategory.innerHTML = '';
+
+  select.innerHTML = '';
   const defaultOption = document.createElement('option');
   defaultOption.value = '';
   defaultOption.textContent = 'Select category';
-  els.entryCategory.appendChild(defaultOption);
+  select.appendChild(defaultOption);
+
   options.forEach((category) => {
     const option = document.createElement('option');
     option.value = category;
     option.textContent = category;
-    els.entryCategory.appendChild(option);
+    select.appendChild(option);
   });
+
   const customOption = document.createElement('option');
   customOption.value = 'custom';
   customOption.textContent = 'Custom…';
-  els.entryCategory.appendChild(customOption);
+  select.appendChild(customOption);
+}
+
+function renderCategoryOptions() {
+  const type = els.entryType.value === 'income' || els.mobileType.value === 'income' ? 'income' : 'expense';
+  populateCategorySelect(els.entryCategory, type);
+  populateCategorySelect(els.mobileCategory, type);
+
   if (editingId) {
     const entry = state.transactions.find((item) => item.id === editingId);
     if (entry) {
@@ -379,6 +401,22 @@ function renderQuickPresets() {
       handleEntrySubmit({ preventDefault: () => {} });
     });
     els.quickPresets.appendChild(button);
+  });
+}
+
+function renderMobileQuickPresets() {
+  els.mobileQuickPresets.innerHTML = '';
+  state.settings.quickPresets.forEach((preset) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = `${preset.label} • ${formatCurrency(preset.amount)}`;
+    button.addEventListener('click', () => {
+      els.mobileAmount.value = preset.amount;
+      els.mobileNote.value = preset.label;
+      els.mobileCategory.value = preset.category || '';
+      handleMobileQuickAdd();
+    });
+    els.mobileQuickPresets.appendChild(button);
   });
 }
 
@@ -715,16 +753,13 @@ function addPresetRow() {
   renderQuickPresets();
 }
 
-function handleEntrySubmit(event) {
-  event.preventDefault();
-  const amount = Number(els.entryAmount.value || 0);
-  const customCategory = els.entryCustomCategory.value.trim();
-  const category = customCategory || els.entryCategory.value || 'Uncategorized';
-  if (!amount) {
+function submitEntryPayload(payload) {
+  if (!payload.amount) {
     showToast('Enter an amount to continue.');
-    return;
+    return false;
   }
 
+  const category = payload.category || 'Uncategorized';
   if (!state.settings.categories.includes(category) && category !== 'Uncategorized') {
     state.settings.categories.push(category);
   }
@@ -733,31 +768,66 @@ function handleEntrySubmit(event) {
     state.settings.budgets[category] = { weekly: 0, monthly: 0 };
   }
 
-  const payload = {
+  const entry = {
     id: editingId || generateId(),
-    type: els.entryType.value,
-    amount,
+    type: payload.type || 'expense',
+    amount: Number(payload.amount),
     category,
-    note: els.entryNote.value.trim(),
-    date: els.entryDate.value || new Date().toISOString().split('T')[0],
+    note: (payload.note || '').trim(),
+    date: payload.date || new Date().toISOString().split('T')[0],
     createdAt: new Date().toISOString()
   };
 
   if (editingId) {
     const index = state.transactions.findIndex((item) => item.id === editingId);
     if (index >= 0) {
-      state.transactions[index] = payload;
+      state.transactions[index] = entry;
     }
   } else {
-    state.transactions.unshift(payload);
+    state.transactions.unshift(entry);
   }
 
   saveState();
   renderAll();
-  syncToGoogleSheets(payload);
-  showToast(editingId ? 'Entry updated.' : 'Entry saved.');
-  resetEntryForm();
-  editingId = null;
+  syncToGoogleSheets(entry);
+  return entry;
+}
+
+function handleEntrySubmit(event) {
+  event.preventDefault();
+  const amount = Number(els.entryAmount.value || 0);
+  const customCategory = els.entryCustomCategory.value.trim();
+  const category = customCategory || els.entryCategory.value || 'Uncategorized';
+  const entry = submitEntryPayload({
+    amount,
+    type: els.entryType.value,
+    category,
+    note: els.entryNote.value,
+    date: els.entryDate.value
+  });
+
+  if (entry) {
+    showToast(editingId ? 'Entry updated.' : 'Entry saved.');
+    resetEntryForm();
+    editingId = null;
+  }
+}
+
+function handleMobileQuickAdd() {
+  const amount = Number(els.mobileAmount.value || 0);
+  const category = els.mobileCategory.value || 'Uncategorized';
+  const entry = submitEntryPayload({
+    amount,
+    type: els.mobileType.value,
+    category,
+    note: els.mobileNote.value,
+    date: els.entryDate.value || new Date().toISOString().split('T')[0]
+  });
+
+  if (entry) {
+    showToast(entry.type === 'income' ? 'Income added.' : 'Expense added.');
+    resetMobileQuickAdd();
+  }
 }
 
 function resetEntryForm() {
@@ -768,6 +838,15 @@ function resetEntryForm() {
   els.entryCustomCategory.value = '';
   els.entryAmount.focus();
   editingId = null;
+  renderCategoryOptions();
+}
+
+function resetMobileQuickAdd() {
+  els.mobileAmount.value = '';
+  els.mobileNote.value = '';
+  els.mobileCategory.value = '';
+  els.mobileType.value = 'expense';
+  els.mobileAmount.focus();
   renderCategoryOptions();
 }
 
