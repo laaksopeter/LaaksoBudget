@@ -884,28 +884,21 @@ async function postToGoogleSheets(payload) {
   const requestBody = JSON.stringify({ ...payload, app: 'LaaksoBudget', sheetId });
   const requestOptions = {
     method: 'POST',
-    credentials: 'omit',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8', 'Accept': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: requestBody
   };
 
-  for (const mode of ['cors', 'no-cors']) {
-    try {
-      const response = await fetch(webhookUrl, { ...requestOptions, mode });
-      if (mode === 'no-cors' || response.ok) {
-        return true;
-      }
-
+  try {
+    const response = await fetch(webhookUrl, requestOptions);
+    if (!response.ok) {
       const errorBody = await response.text();
       throw new Error(`HTTP ${response.status}: ${errorBody || 'No response body'}`);
-    } catch (error) {
-      if (mode === 'no-cors') {
-        throw error;
-      }
     }
-  }
 
-  throw new Error('Unable to reach the Google Apps Script endpoint.');
+    return true;
+  } catch (error) {
+    throw error;
+  }
 }
 
 async function syncToGoogleSheets(entry) {
