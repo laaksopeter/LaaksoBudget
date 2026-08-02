@@ -872,29 +872,46 @@ function deleteTransaction(id) {
   showToast('Entry removed.');
 }
 
-async function syncToGoogleSheets(entry) {
+async function postToGoogleSheets(payload) {
   const inputValue = state.settings.webhookUrl?.trim();
   const sheetId = resolveSheetId(inputValue);
   const webhookUrl = resolveWebhookUrl(inputValue);
 
   if (!webhookUrl || (!sheetId && !/^https?:\/\//i.test(inputValue || ''))) {
-    showToast('Add your Google Sheets spreadsheet ID first.');
-    return;
+    throw new Error('Add your Google Sheets spreadsheet ID first.');
   }
 
-  try {
-      const response = await fetch(webhookUrl, {
-      method: 'POST',
-      mode: 'cors',
-      credentials: 'omit',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ entry, app: 'LaaksoBudget', sheetId })
-    });
+  const requestBody = JSON.stringify({ ...payload, app: 'LaaksoBudget', sheetId });
+  const requestOptions = {
+    method: 'POST',
+    credentials: 'omit',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8', 'Accept': 'application/json' },
+    body: requestBody
+  };
 
-    if (!response.ok) {
+  for (const mode of ['cors', 'no-cors']) {
+    try {
+      const response = await fetch(webhookUrl, { ...requestOptions, mode });
+      if (mode === 'no-cors' || response.ok) {
+        return true;
+      }
+
       const errorBody = await response.text();
       throw new Error(`HTTP ${response.status}: ${errorBody || 'No response body'}`);
+    } catch (error) {
+      if (mode === 'no-cors') {
+        throw error;
+      }
     }
+  }
+
+  throw new Error('Unable to reach the Google Apps Script endpoint.');
+}
+
+async function syncToGoogleSheets(entry) {
+  try {
+    await postToGoogleSheets({ entry: { ...entry, createdAt: entry?.createdAt || new Date().toISOString() } });
+    showToast('Saved to Google Sheets.');
   } catch (error) {
     console.warn('Google Sheets sync failed.', error);
     showToast(`Google Sheets sync failed: ${error.message}`);
@@ -902,29 +919,13 @@ async function syncToGoogleSheets(entry) {
 }
 
 async function syncAllTransactionsToGoogleSheets() {
-  const inputValue = state.settings.webhookUrl?.trim();
-  const sheetId = resolveSheetId(inputValue);
-  const webhookUrl = resolveWebhookUrl(inputValue);
-
-  if (!webhookUrl || (!sheetId && !/^https?:\/\//i.test(inputValue || ''))) {
-    showToast('Add your Google Sheets spreadsheet ID first.');
-    return;
-  }
-
   try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      mode: 'cors',
-      credentials: 'omit',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ entries: state.transactions, app: 'LaaksoBudget', mode: 'full-sync', sheetId })
-    });
+    const entries = state.transactions.map((transaction) => ({
+      ...transaction,
+      createdAt: transaction?.createdAt || new Date().toISOString()
+    }));
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorBody || 'No response body'}`);
-    }
-
+    await postToGoogleSheets({ entries, mode: 'full-sync' });
     showToast('Pushed to Google Sheets.');
   } catch (error) {
     console.warn('Google Sheets full sync failed.', error);
