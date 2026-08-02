@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Budget & Expense Tracker</title>
+    <meta
+      name="description"
+      content="A lightweight personal budget and expense tracker with offline support."
+    />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="./style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Personal Finance</p>
+          <h1>Budget & Expense Tracker</h1>
+          <p class="subtitle">
+            Capture spending quickly, stay on top of budgets, and keep everything
+            available offline.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="settingsBtn" class="secondary-btn">Settings</button>
+          <button id="themeToggle" class="ghost-btn" aria-label="Toggle color theme">
+            🌙
+          </button>
+        </div>
+      </header>
+
+      <section class="summary-grid">
+        <article class="card summary-card">
+          <p>Income</p>
+          <h2 id="incomeSummary">$0.00</h2>
+        </article>
+        <article class="card summary-card">
+          <p>Expenses</p>
+          <h2 id="expenseSummary">$0.00</h2>
+        </article>
+        <article class="card summary-card">
+          <p>Net Cash Flow</p>
+          <h2 id="netSummary">$0.00</h2>
+        </article>
+        <article class="card summary-card">
+          <p>Budget Left</p>
+          <h2 id="budgetLeftSummary">$0.00</h2>
+        </article>
+      </section>
+
+      <section class="dashboard-grid">
+        <div class="card">
+          <div class="section-heading">
+            <div>
+              <h3>Quick Entry</h3>
+              <p>Fast capture for everyday spending</p>
+            </div>
+          </div>
+          <form id="entryForm" class="entry-form">
+            <div class="field-row">
+              <label>
+                <span>Date</span>
+                <input type="date" id="entryDate" required />
+              </label>
+              <label>
+                <span>Amount</span>
+                <input
+                  type="number"
+                  id="entryAmount"
+                  step="0.01"
+                  min="0"
+                  inputmode="decimal"
+                  required
+                  autofocus
+                />
+              </label>
+            </div>
+            <div class="field-row">
+              <label>
+                <span>Type</span>
+                <select id="entryType">
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </select>
+              </label>
+              <label>
+                <span>Category</span>
+                <select id="entryCategory"></select>
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="full-width">
+                <span>Custom Category</span>
+                <input type="text" id="entryCustomCategory" placeholder="e.g. Travel" />
+              </label>
+            </div>
+            <label class="full-width">
+              <span>Note</span>
+              <input type="text" id="entryNote" placeholder="Coffee with Sam" />
+            </label>
+            <div class="quick-presets" id="quickPresets"></div>
+            <div class="actions">
+              <button type="submit" class="primary-btn">Save Entry</button>
+              <button type="button" id="clearFormBtn" class="secondary-btn">Clear</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="section-heading">
+            <div>
+              <h3>Budget Health</h3>
+              <p>Track progress against your limits</p>
+            </div>
+            <div class="toggle-group" role="group" aria-label="Timeframe selector">
+              <button type="button" class="chip active" data-range="week">This Week</button>
+              <button type="button" class="chip" data-range="month">This Month</button>
+            </div>
+          </div>
+          <div class="budget-health">
+            <div class="insight-card">
+              <p>Remaining Daily Allowance</p>
+              <h4 id="dailyAllowance">$0.00</h4>
+            </div>
+            <div class="insight-card">
+              <p>Budget Remaining</p>
+              <h4 id="budgetRemaining">$0.00</h4>
+            </div>
+          </div>
+          <div id="budgetStatusList" class="budget-list"></div>
+        </div>
+      </section>
+
+      <section class="dashboard-grid lower-grid">
+        <div class="card">
+          <div class="section-heading">
+            <div>
+              <h3>Analytics</h3>
+              <p>Spending distribution</p>
+            </div>
+          </div>
+          <canvas id="expenseChart"></canvas>
+        </div>
+
+        <div class="card">
+          <div class="section-heading">
+            <div>
+              <h3>Transaction History</h3>
+              <p>Review and manage entries</p>
+            </div>
+            <div class="history-controls">
+              <select id="historyFilter">
+                <option value="all">All</option>
+                <option value="expense">Expenses</option>
+                <option value="income">Income</option>
+              </select>
+              <input type="search" id="historySearch" placeholder="Search notes or category" />
+            </div>
+          </div>
+          <div id="transactionList" class="transaction-list"></div>
+        </div>
+      </section>
+    </div>
+
+    <div id="settingsModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Settings</h3>
+          <button type="button" id="closeSettingsBtn" class="ghost-btn">×</button>
+        </div>
+        <div class="modal-content">
+          <section class="settings-section">
+            <h4>Income Tracker</h4>
+            <div class="field-row">
+              <label>
+                <span>Amount</span>
+                <input type="number" id="incomeAmount" step="0.01" min="0" />
+              </label>
+              <label>
+                <span>Frequency</span>
+                <select id="incomeFrequency">
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Bi-weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>Payday</span>
+              <input type="date" id="incomePayday" />
+            </label>
+          </section>
+
+          <section class="settings-section">
+            <h4>Category Budgets</h4>
+            <div id="budgetRows"></div>
+          </section>
+
+          <section class="settings-section">
+            <h4>Overall Budget</h4>
+            <div class="field-row">
+              <label>
+                <span>Weekly Limit</span>
+                <input type="number" id="overallWeeklyBudget" step="0.01" min="0" />
+              </label>
+              <label>
+                <span>Monthly Limit</span>
+                <input type="number" id="overallMonthlyBudget" step="0.01" min="0" />
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h4>Quick Presets</h4>
+            <div id="presetRows"></div>
+            <button type="button" id="addPresetBtn" class="secondary-btn">Add Preset</button>
+          </section>
+
+          <section class="settings-section">
+            <h4>Data Management</h4>
+            <div class="settings-actions">
+              <button type="button" id="exportBtn" class="secondary-btn">Export CSV</button>
+              <label class="file-button secondary-btn">
+                <span>Import CSV</span>
+                <input type="file" id="importFile" accept=".csv" hidden />
+              </label>
+              <button type="button" id="resetBtn" class="danger-btn">Reset Data</button>
+            </div>
+            <label class="full-width">
+              <span>Google Sheets Webhook URL</span>
+              <input
+                type="text"
+                id="webhookUrl"
+                placeholder="https://script.google.com/macros/s/.../exec"
+              />
+            </label>
+            <p class="hint">
+              Optional: forward each new entry to a Google Apps Script endpoint.
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
