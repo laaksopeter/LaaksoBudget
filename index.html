@@ -74,7 +74,6 @@
                   min="0"
                   inputmode="decimal"
                   required
-                  autofocus
                 />
               </label>
             </div>
@@ -163,6 +162,51 @@
           <div id="transactionList" class="transaction-list"></div>
         </div>
       </section>
+
+      <section class="card goals-card">
+        <div class="section-heading">
+          <div>
+            <h3>Goals Planner</h3>
+            <p>Figure out how much to save or pay down each week or month</p>
+          </div>
+        </div>
+        <form id="goalsForm" class="entry-form">
+          <div class="field-row">
+            <label>
+              <span>Goal amount</span>
+              <input type="number" id="goalAmount" step="0.01" min="0" required />
+            </label>
+            <label>
+              <span>Target date</span>
+              <input type="date" id="goalDate" required />
+            </label>
+          </div>
+          <label class="full-width">
+            <span>Goal name</span>
+            <input type="text" id="goalName" placeholder="Student loans, emergency fund, vacation" />
+          </label>
+          <div class="quick-presets" id="goalPresets"></div>
+          <div class="field-row">
+            <label>
+              <span>Amount already funded</span>
+              <input type="number" id="goalFunded" step="0.01" min="0" value="0" />
+            </label>
+            <label>
+              <span>Budget this as a category</span>
+              <select id="goalBudgetCategory">
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary-btn">Save Goal</button>
+            <button type="button" id="clearGoalBtn" class="secondary-btn">Clear</button>
+          </div>
+        </form>
+        <div id="goalResult" class="goal-result"></div>
+        <div id="goalsDashboard" class="goal-dashboard"></div>
+      </section>
     </div>
 
     <div id="settingsModal" class="modal hidden" aria-hidden="true">
@@ -197,6 +241,14 @@
           <section class="settings-section">
             <h4>Category Budgets</h4>
             <div id="budgetRows"></div>
+            <div class="hint">Use the +/− buttons to adjust each category budget quickly.</div>
+            <div class="field-row" style="align-items:end;">
+              <label>
+                <span>New Category</span>
+                <input type="text" id="newBudgetCategory" placeholder="Travel" />
+              </label>
+              <button type="button" id="addCategoryBtn" class="secondary-btn">Add Category</button>
+            </div>
           </section>
 
           <section class="settings-section">

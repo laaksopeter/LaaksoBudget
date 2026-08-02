@@ -25,13 +25,21 @@ const defaultState = {
   },
   ui: {
     theme: 'dark',
-    timeframe: 'week'
+    timeframe: 'week',
+    goal: null,
+    goals: []
   }
 };
 
 let state = loadState();
 let chartInstance = null;
 let editingId = null;
+
+const goalPresetTemplates = [
+  { label: 'Emergency Fund', amount: 1000, months: 6 },
+  { label: 'Student Loans', amount: 500, months: 12 },
+  { label: 'Vacation', amount: 1500, months: 4 }
+];
 
 const els = {
   entryForm: document.getElementById('entryForm'),
@@ -59,6 +67,18 @@ const els = {
   transactionList: document.getElementById('transactionList'),
   historyFilter: document.getElementById('historyFilter'),
   historySearch: document.getElementById('historySearch'),
+  goalsForm: document.getElementById('goalsForm'),
+  goalAmount: document.getElementById('goalAmount'),
+  goalDate: document.getElementById('goalDate'),
+  goalName: document.getElementById('goalName'),
+  goalFunded: document.getElementById('goalFunded'),
+  goalBudgetCategory: document.getElementById('goalBudgetCategory'),
+  goalPresets: document.getElementById('goalPresets'),
+  goalResult: document.getElementById('goalResult'),
+  goalsDashboard: document.getElementById('goalsDashboard'),
+  clearGoalBtn: document.getElementById('clearGoalBtn'),
+  newBudgetCategory: document.getElementById('newBudgetCategory'),
+  addCategoryBtn: document.getElementById('addCategoryBtn'),
   budgetRows: document.getElementById('budgetRows'),
   presetRows: document.getElementById('presetRows'),
   addPresetBtn: document.getElementById('addPresetBtn'),
@@ -193,10 +213,12 @@ function computeSummary(timeframe) {
 
 function init() {
   setDefaultDate();
+  setDefaultGoalDate();
   bindEvents();
   restoreUIState();
   renderCategoryOptions();
   renderQuickPresets();
+  renderGoalPresets();
   renderSettings();
   renderAll();
   registerServiceWorker();
@@ -206,6 +228,12 @@ function init() {
 function setDefaultDate() {
   const today = new Date().toISOString().split('T')[0];
   els.entryDate.value = today;
+}
+
+function setDefaultGoalDate() {
+  const nextMonth = new Date();
+  nextMonth.setMonth(nextMonth.getMonth() + 6);
+  els.goalDate.value = nextMonth.toISOString().split('T')[0];
 }
 
 function restoreUIState() {
@@ -246,6 +274,9 @@ function bindEvents() {
   els.historySearch.addEventListener('input', renderHistory);
   els.addPresetBtn.addEventListener('click', addPresetRow);
   els.exportBtn.addEventListener('click', exportToCsv);
+  els.goalsForm.addEventListener('submit', handleGoalSubmit);
+  els.clearGoalBtn.addEventListener('click', clearGoalForm);
+  els.addCategoryBtn.addEventListener('click', addCustomBudgetCategory);
   els.syncSheetsBtn.addEventListener('click', () => {
     syncAllTransactionsToGoogleSheets();
   });
@@ -282,6 +313,8 @@ function bindEvents() {
 function renderAll() {
   renderCategoryOptions();
   renderSummary();
+  renderGoalResult();
+  renderGoalsDashboard();
   renderBudgetHealth();
   renderChart();
   renderHistory();
@@ -481,6 +514,79 @@ function renderHistory() {
   });
 }
 
+function renderGoalPresets() {
+  els.goalPresets.innerHTML = '';
+  goalPresetTemplates.forEach((preset) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = `${preset.label} • ${formatCurrency(preset.amount)}`;
+    button.addEventListener('click', () => {
+      const targetDate = new Date();
+      targetDate.setMonth(targetDate.getMonth() + preset.months);
+      els.goalName.value = preset.label;
+      els.goalAmount.value = preset.amount;
+      els.goalFunded.value = 0;
+      els.goalBudgetCategory.value = 'yes';
+      els.goalDate.value = targetDate.toISOString().split('T')[0];
+    });
+    els.goalPresets.appendChild(button);
+  });
+}
+
+function renderGoalResult() {
+  const goal = state.ui.goal;
+  if (!goal) {
+    els.goalResult.innerHTML = '<p class="hint">Enter a goal amount and target date to see your weekly/monthly pace.</p>';
+    return;
+  }
+
+  const now = new Date();
+  const targetDate = new Date(goal.targetDate);
+  const diffDays = Math.max(1, Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24)));
+  const months = Math.max(1, diffDays / 30);
+  const weeks = Math.max(1, diffDays / 7);
+  const monthlyTarget = goal.amount / months;
+  const weeklyTarget = goal.amount / weeks;
+  const remaining = Math.max(0, goal.amount - (goal.funded || 0));
+
+  els.goalResult.innerHTML = `
+    <h4>${goal.name || 'Goal'}</h4>
+    <p><strong>${formatCurrency(goal.amount)}</strong> by ${formatDate(goal.targetDate)}</p>
+    <p>Remaining: <strong>${formatCurrency(remaining)}</strong></p>
+    <p>Monthly target: <strong>${formatCurrency(monthlyTarget)}</strong></p>
+    <p>Weekly target: <strong>${formatCurrency(weeklyTarget)}</strong></p>
+    <p class="hint">Based on ${diffDays} days remaining.</p>
+  `;
+}
+
+function renderGoalsDashboard() {
+  const goals = state.ui.goals || [];
+  if (!goals.length) {
+    els.goalsDashboard.innerHTML = '<p class="hint">Save a goal to see a progress dashboard here.</p>';
+    return;
+  }
+
+  els.goalsDashboard.innerHTML = goals.map((goal) => {
+    const progress = Math.min(100, (goal.funded / goal.amount) * 100 || 0);
+    const remaining = Math.max(0, goal.amount - goal.funded);
+    const weeklyTarget = goal.amount > 0 ? goal.amount / Math.max(1, Math.ceil((new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24 * 7))) : 0;
+    const budgetText = goal.budgetAsCategory ? `Budget category: ${formatCurrency(weeklyTarget)}/week` : 'Not budgeted as a category';
+    return `
+      <div class="goal-dashboard-item">
+        <div class="budget-item-top">
+          <strong>${goal.name}</strong>
+          <span>${formatCurrency(goal.funded)} / ${formatCurrency(goal.amount)}</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill ${progress >= 100 ? 'green' : progress >= 75 ? 'orange' : 'green'}" style="width:${progress}%"></div>
+        </div>
+        <p class="hint">${formatCurrency(remaining)} remaining • ${goal.type || 'goal'}</p>
+        <span class="goal-budget-pill">${budgetText}</span>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderSettings() {
   const { income } = state.settings;
   els.incomeAmount.value = income.amount || 0;
@@ -494,8 +600,16 @@ function renderSettings() {
     .map((category) => `
       <div class="budget-row">
         <label><span>${category}</span></label>
-        <input type="number" data-category="${category}" data-field="weekly" value="${state.settings.budgets[category].weekly || 0}" step="0.01" min="0" />
-        <input type="number" data-category="${category}" data-field="monthly" value="${state.settings.budgets[category].monthly || 0}" step="0.01" min="0" />
+        <div class="budget-adjust-group">
+          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="weekly" data-direction="decrement">−</button>
+          <input type="number" inputmode="decimal" data-category="${category}" data-field="weekly" value="${state.settings.budgets[category].weekly || 0}" step="0.01" min="0" />
+          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="weekly" data-direction="increment">+</button>
+        </div>
+        <div class="budget-adjust-group">
+          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="monthly" data-direction="decrement">−</button>
+          <input type="number" inputmode="decimal" data-category="${category}" data-field="monthly" value="${state.settings.budgets[category].monthly || 0}" step="0.01" min="0" />
+          <button type="button" class="budget-adjust-btn" data-adjust-budget="${category}" data-field="monthly" data-direction="increment">+</button>
+        </div>
         <button type="button" class="ghost-btn" data-remove-category="${category}">Remove</button>
       </div>`)
     .join('');
@@ -510,6 +624,11 @@ function renderSettings() {
 
   els.budgetRows.querySelectorAll('input').forEach((input) => {
     input.addEventListener('input', handleBudgetInput);
+  });
+  els.budgetRows.querySelectorAll('[data-adjust-budget]').forEach((button) => {
+    button.addEventListener('click', () => {
+      adjustCategoryBudget(button.dataset.adjustBudget, button.dataset.field, button.dataset.direction);
+    });
   });
   els.budgetRows.querySelectorAll('[data-remove-category]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -540,6 +659,23 @@ function handleBudgetInput(event) {
   }
   state.settings.budgets[category][field] = Number(target.value || 0);
   saveState();
+  renderSummary();
+  renderBudgetHealth();
+}
+
+function adjustCategoryBudget(category, field, direction) {
+  if (!state.settings.budgets[category]) {
+    state.settings.budgets[category] = { weekly: 0, monthly: 0 };
+  }
+
+  const step = 5;
+  const currentValue = Number(state.settings.budgets[category][field] || 0);
+  state.settings.budgets[category][field] = direction === 'increment'
+    ? currentValue + step
+    : Math.max(0, currentValue - step);
+
+  saveState();
+  renderSettings();
   renderAll();
 }
 
@@ -620,6 +756,67 @@ function resetEntryForm() {
   renderCategoryOptions();
 }
 
+function handleGoalSubmit(event) {
+  event.preventDefault();
+  const amount = Number(els.goalAmount.value || 0);
+  const targetDate = els.goalDate.value;
+  const name = els.goalName.value.trim() || 'Goal';
+
+  if (!amount || !targetDate) {
+    showToast('Enter an amount and target date.');
+    return;
+  }
+
+  const funded = Number(els.goalFunded.value || 0);
+  const budgetAsCategory = els.goalBudgetCategory.value === 'yes';
+  const weeklyTarget = amount / Math.max(1, Math.ceil((new Date(targetDate) - new Date()) / (1000 * 60 * 60 * 24 * 7)));
+  const monthlyTarget = amount / Math.max(1, Math.ceil((new Date(targetDate) - new Date()) / (1000 * 60 * 60 * 24 * 30)));
+  const goalEntry = { amount, targetDate, name, funded, type: 'goal', budgetAsCategory, weeklyTarget, monthlyTarget };
+
+  state.ui.goal = goalEntry;
+  if (!state.ui.goals) state.ui.goals = [];
+  if (budgetAsCategory && !state.settings.budgets[name]) {
+    state.settings.budgets[name] = { weekly: weeklyTarget, monthly: monthlyTarget };
+    if (!state.settings.categories.includes(name)) {
+      state.settings.categories.push(name);
+    }
+  }
+  const existingIndex = state.ui.goals.findIndex((item) => item.name.toLowerCase() === name.toLowerCase());
+  if (existingIndex >= 0) {
+    state.ui.goals[existingIndex] = goalEntry;
+  } else {
+    state.ui.goals.push(goalEntry);
+  }
+
+  saveState();
+  renderGoalResult();
+  renderGoalsDashboard();
+  showToast('Goal saved.');
+}
+
+function clearGoalForm() {
+  els.goalsForm.reset();
+  state.ui.goal = null;
+  saveState();
+  renderGoalResult();
+  renderGoalsDashboard();
+  setDefaultGoalDate();
+}
+
+function addCustomBudgetCategory() {
+  const category = els.newBudgetCategory.value.trim();
+  if (!category) return;
+  if (!state.settings.budgets[category]) {
+    state.settings.budgets[category] = { weekly: 0, monthly: 0 };
+    state.settings.categories.push(category);
+    saveState();
+    renderSettings();
+    renderAll();
+    els.newBudgetCategory.value = '';
+    showToast('Category added.');
+  }
+}
+
 function openSettings() {
   els.settingsModal.classList.remove('hidden');
   els.settingsModal.setAttribute('aria-hidden', 'false');
@@ -668,14 +865,17 @@ async function syncToGoogleSheets(entry) {
   }
 
   try {
-    const response = await fetch(webhookUrl, {
+      const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ entry, app: 'LaaksoBudget' })
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorBody = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorBody || 'No response body'}`);
     }
   } catch (error) {
     console.warn('Google Sheets sync failed.', error);
@@ -693,18 +893,21 @@ async function syncAllTransactionsToGoogleSheets() {
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ entries: state.transactions, app: 'LaaksoBudget', mode: 'full-sync' })
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorBody = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorBody || 'No response body'}`);
     }
 
     showToast('Pushed to Google Sheets.');
   } catch (error) {
     console.warn('Google Sheets full sync failed.', error);
-    showToast('Google Sheets sync failed.');
+    showToast(`Google Sheets sync failed: ${error.message}`);
   }
 }
 
