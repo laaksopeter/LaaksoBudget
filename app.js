@@ -355,11 +355,22 @@ function bindEvents() {
   els.goalsForm.addEventListener('submit', handleGoalSubmit);
   els.clearGoalBtn.addEventListener('click', clearGoalForm);
   els.addCategoryBtn.addEventListener('click', addCustomBudgetCategory);
-  els.syncSheetsBtn.addEventListener('click', async () => {
-    showToast('Syncing with Google Sheets…');
-    await loadFromGoogleSheets();
-    await syncSettingsToGoogleSheets();
-    await syncAllTransactionsToGoogleSheets();
+els.syncSheetsBtn.addEventListener('click', async () => {
+    try {
+      showToast('🔄 Fetching latest data from Google Sheets…');
+      
+      // 1. Pull down data from Google Sheets first
+      const pulledSuccess = await loadFromGoogleSheets();
+      
+      if (pulledSuccess) {
+        showToast('✅ Downloaded latest data from cloud!');
+      } else {
+        showToast('⚠️ Sync completed using local cache.');
+      }
+    } catch (err) {
+      console.error('Sync failed:', err);
+      showToast('❌ Failed to pull from Google Sheets.');
+    }
   });
   els.importFile.addEventListener('change', importFromCsv);
   els.resetBtn.addEventListener('click', resetData);
@@ -1119,17 +1130,17 @@ async function loadFromGoogleSheets() {
   const sheetId = resolveSheetId(inputValue);
   const webhookUrl = resolveWebhookUrl(inputValue);
 
-  if (!webhookUrl) return;
+  if (!webhookUrl) return false;
 
   try {
     const fetchUrl = sheetId ? `${webhookUrl}?sheetId=${encodeURIComponent(sheetId)}` : webhookUrl;
     const response = await fetch(fetchUrl);
-    if (!response.ok) return;
+    if (!response.ok) return false;
 
     const data = await response.json();
 
     if (data.ok) {
-      // 1. Sync Settings (Categories, Budgets, Income, Fixed Bills, Presets)
+      // 1. Sync Settings
       if (data.settings && typeof data.settings === 'object') {
         state.settings = {
           ...state.settings,
@@ -1156,6 +1167,7 @@ async function loadFromGoogleSheets() {
           };
         });
 
+        // Deduplicate and merge cloud transactions with local
         const mergedMap = new Map();
         [...state.transactions, ...cloudTransactions].forEach((item) => {
           const key = `${item.date}_${item.type}_${item.amount}_${item.category}_${item.note}`;
@@ -1169,10 +1181,12 @@ async function loadFromGoogleSheets() {
 
       saveState();
       renderAll();
-      console.log('Successfully synced settings & entries with Google Sheets!');
+      return true; // Return true so caller knows data was updated
     }
+    return false;
   } catch (error) {
-    console.warn('Could not fetch cloud data, using local cache instead.', error);
+    console.warn('Could not fetch cloud data:', error);
+    return false;
   }
 }
 
