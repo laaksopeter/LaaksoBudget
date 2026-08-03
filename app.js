@@ -250,7 +250,7 @@ function computeSummary(timeframe) {
   };
 }
 
-function init() {
+async function init() {
   setDefaultDate();
   setDefaultGoalDate();
   bindEvents();
@@ -261,6 +261,10 @@ function init() {
   renderSettings();
   renderAll();
   registerServiceWorker();
+
+  // Load cloud data on startup for multi-device sync
+  await loadFromGoogleSheets();
+
   if (els.mobileAmount) {
     els.mobileAmount.focus();
   } else if (els.entryAmount) {
@@ -348,8 +352,10 @@ function bindEvents() {
   els.goalsForm.addEventListener('submit', handleGoalSubmit);
   els.clearGoalBtn.addEventListener('click', clearGoalForm);
   els.addCategoryBtn.addEventListener('click', addCustomBudgetCategory);
-  els.syncSheetsBtn.addEventListener('click', () => {
-    syncAllTransactionsToGoogleSheets();
+  els.syncSheetsBtn.addEventListener('click', async () => {
+    showToast('Syncing with Google Sheets…');
+    await loadFromGoogleSheets();
+    await syncAllTransactionsToGoogleSheets();
   });
   els.importFile.addEventListener('change', importFromCsv);
   els.resetBtn.addEventListener('click', resetData);
@@ -1094,6 +1100,55 @@ function deleteTransaction(id) {
   saveState();
   renderAll();
   showToast('Entry removed.');
+}
+
+async function loadFromGoogleSheets() {
+  const inputValue = state.settings.webhookUrl?.trim();
+  const sheetId = resolveSheetId(inputValue);
+  const webhookUrl = resolveWebhookUrl(inputValue);
+
+  if (!webhookUrl) return;
+
+  try {
+    const fetchUrl = sheetId ? `${webhookUrl}?sheetId=${encodeURIComponent(sheetId)}` : webhookUrl;
+    const response = await fetch(fetchUrl);
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (data.ok && Array.isArray(data.entries) && data.entries.length > 0) {
+      const cloudTransactions = data.entries.map((entry) => {
+        let parsedDate = entry.date;
+        if (parsedDate && parsedDate.includes('T')) {
+          parsedDate = parsedDate.split('T')[0];
+        }
+        return {
+          id: entry.id || generateId(),
+          type: (entry.type || 'expense').toLowerCase(),
+          amount: Number(entry.amount || 0),
+          category: entry.category || 'Uncategorized',
+          note: entry.note || '',
+          date: parsedDate || new Date().toISOString().split('T')[0],
+          createdAt: entry.createdAt || new Date().toISOString()
+        };
+      });
+
+      // Merge cloud transactions with local transactions without duplicating
+      const mergedMap = new Map();
+      [...state.transactions, ...cloudTransactions].forEach((item) => {
+        const key = `${item.date}_${item.type}_${item.amount}_${item.category}_${item.note}`;
+        if (!mergedMap.has(key)) {
+          mergedMap.set(key, item);
+        }
+      });
+
+      state.transactions = Array.from(mergedMap.values());
+      saveState();
+      renderAll();
+      console.log('Successfully synced with Google Sheets cloud data!');
+    }
+  } catch (error) {
+    console.warn('Could not fetch cloud data, using local cache instead.', error);
+  }
 }
 
 async function postToGoogleSheets(payload) {
