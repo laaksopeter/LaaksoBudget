@@ -144,8 +144,11 @@ function loadState() {
   }
 }
 
-function saveState() {
+function saveState(syncCloudSettings = false) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (syncCloudSettings) {
+    syncSettingsToGoogleSheets();
+  }
 }
 
 function generateId() {
@@ -262,7 +265,7 @@ async function init() {
   renderAll();
   registerServiceWorker();
 
-  // Load cloud data on startup for multi-device sync
+  // Load cloud data & settings on startup for multi-device sync
   await loadFromGoogleSheets();
 
   if (els.mobileAmount) {
@@ -355,35 +358,36 @@ function bindEvents() {
   els.syncSheetsBtn.addEventListener('click', async () => {
     showToast('Syncing with Google Sheets…');
     await loadFromGoogleSheets();
+    await syncSettingsToGoogleSheets();
     await syncAllTransactionsToGoogleSheets();
   });
   els.importFile.addEventListener('change', importFromCsv);
   els.resetBtn.addEventListener('click', resetData);
-  els.incomeAmount.addEventListener('input', () => {
+  els.incomeAmount.addEventListener('change', () => {
     state.settings.income.amount = Number(els.incomeAmount.value || 0);
-    saveState();
+    saveState(true);
   });
   els.incomeFrequency.addEventListener('change', () => {
     state.settings.income.frequency = els.incomeFrequency.value;
-    saveState();
+    saveState(true);
   });
   els.incomePayday.addEventListener('change', () => {
     state.settings.income.payday = els.incomePayday.value;
-    saveState();
+    saveState(true);
   });
-  els.overallWeeklyBudget.addEventListener('input', () => {
+  els.overallWeeklyBudget.addEventListener('change', () => {
     state.settings.overallBudget.weekly = Number(els.overallWeeklyBudget.value || 0);
-    saveState();
+    saveState(true);
     renderAll();
   });
-  els.overallMonthlyBudget.addEventListener('input', () => {
+  els.overallMonthlyBudget.addEventListener('change', () => {
     state.settings.overallBudget.monthly = Number(els.overallMonthlyBudget.value || 0);
-    saveState();
+    saveState(true);
     renderAll();
   });
-  els.webhookUrl.addEventListener('input', () => {
+  els.webhookUrl.addEventListener('change', () => {
     state.settings.webhookUrl = els.webhookUrl.value.trim();
-    saveState();
+    saveState(true);
   });
 }
 
@@ -781,7 +785,7 @@ function renderSettings() {
   `).join('');
 
   els.budgetRows.querySelectorAll('input').forEach((input) => {
-    input.addEventListener('input', handleBudgetInput);
+    input.addEventListener('change', handleBudgetInput);
   });
   els.budgetRows.querySelectorAll('select').forEach((select) => {
     select.addEventListener('change', handleBudgetInput);
@@ -794,7 +798,7 @@ function renderSettings() {
   els.budgetRows.querySelectorAll('[data-remove-category]').forEach((button) => {
     button.addEventListener('click', () => {
       delete state.settings.budgets[button.dataset.removeCategory];
-      saveState();
+      saveState(true);
       renderSettings();
       renderAll();
     });
@@ -803,17 +807,17 @@ function renderSettings() {
     button.addEventListener('click', () => {
       const index = Number(button.dataset.removeBill);
       state.settings.fixedBills.splice(index, 1);
-      saveState();
+      saveState(true);
       renderSettings();
     });
   });
   els.presetRows.querySelectorAll('input').forEach((input) => {
-    input.addEventListener('input', handlePresetInput);
+    input.addEventListener('change', handlePresetInput);
   });
   els.presetRows.querySelectorAll('[data-remove-preset]').forEach((button) => {
     button.addEventListener('click', () => {
       state.settings.quickPresets.splice(Number(button.dataset.removePreset), 1);
-      saveState();
+      saveState(true);
       renderSettings();
       renderQuickPresets();
     });
@@ -833,7 +837,7 @@ function handleBudgetInput(event) {
     state.settings.budgets[category].frequency = target.value;
   }
 
-  saveState();
+  saveState(true);
   renderSummary();
   renderBudgetHealth();
 }
@@ -849,7 +853,7 @@ function adjustCategoryBudget(category, direction) {
     ? currentValue + step
     : Math.max(0, currentValue - step);
 
-  saveState();
+  saveState(true);
   renderSettings();
   renderAll();
 }
@@ -864,13 +868,13 @@ function handlePresetInput(event) {
   } else {
     state.settings.quickPresets[index].label = target.value;
   }
-  saveState();
+  saveState(true);
   renderQuickPresets();
 }
 
 function addPresetRow() {
   state.settings.quickPresets.push({ label: 'New Preset', amount: 0 });
-  saveState();
+  saveState(true);
   renderSettings();
   renderQuickPresets();
 }
@@ -886,7 +890,7 @@ function addFixedBill() {
     frequency: els.newBillFrequency?.value || 'monthly'
   });
 
-  saveState();
+  saveState(true);
   renderSettings();
   if (els.newBillName) els.newBillName.value = '';
   if (els.newBillAmount) els.newBillAmount.value = '';
@@ -901,12 +905,16 @@ function submitEntryPayload(payload) {
   }
 
   const category = payload.category || 'Uncategorized';
+  let settingsChanged = false;
+
   if (!state.settings.categories.includes(category) && category !== 'Uncategorized') {
     state.settings.categories.push(category);
+    settingsChanged = true;
   }
 
   if (!state.settings.budgets[category]) {
     state.settings.budgets[category] = { weekly: 0, monthly: 0 };
+    settingsChanged = true;
   }
 
   const entry = {
@@ -928,7 +936,7 @@ function submitEntryPayload(payload) {
     state.transactions.unshift(entry);
   }
 
-  saveState();
+  saveState(settingsChanged);
   renderAll();
   syncToGoogleSheets(entry);
   return entry;
@@ -1018,14 +1026,18 @@ function handleGoalSubmit(event) {
   const monthlyTarget = amount / Math.max(1, Math.ceil((new Date(targetDate) - new Date()) / (1000 * 60 * 60 * 24 * 30)));
   const goalEntry = { amount, targetDate, name, funded, type: 'goal', budgetAsCategory, weeklyTarget, monthlyTarget };
 
+  let settingsChanged = false;
   state.ui.goal = goalEntry;
   if (!state.ui.goals) state.ui.goals = [];
+
   if (budgetAsCategory && !state.settings.budgets[name]) {
     state.settings.budgets[name] = { weekly: weeklyTarget, monthly: monthlyTarget };
     if (!state.settings.categories.includes(name)) {
       state.settings.categories.push(name);
     }
+    settingsChanged = true;
   }
+
   const existingIndex = state.ui.goals.findIndex((item) => item.name.toLowerCase() === name.toLowerCase());
   if (existingIndex >= 0) {
     state.ui.goals[existingIndex] = goalEntry;
@@ -1033,7 +1045,7 @@ function handleGoalSubmit(event) {
     state.ui.goals.push(goalEntry);
   }
 
-  saveState();
+  saveState(settingsChanged);
   renderGoalResult();
   renderGoalsDashboard();
   showToast('Goal saved.');
@@ -1054,7 +1066,7 @@ function addCustomBudgetCategory() {
   if (!state.settings.budgets[category]) {
     state.settings.budgets[category] = { weekly: 0, monthly: 0 };
     state.settings.categories.push(category);
-    saveState();
+    saveState(true);
     renderSettings();
     renderAll();
     els.newBudgetCategory.value = '';
@@ -1115,36 +1127,49 @@ async function loadFromGoogleSheets() {
     if (!response.ok) return;
 
     const data = await response.json();
-    if (data.ok && Array.isArray(data.entries) && data.entries.length > 0) {
-      const cloudTransactions = data.entries.map((entry) => {
-        let parsedDate = entry.date;
-        if (parsedDate && parsedDate.includes('T')) {
-          parsedDate = parsedDate.split('T')[0];
-        }
-        return {
-          id: entry.id || generateId(),
-          type: (entry.type || 'expense').toLowerCase(),
-          amount: Number(entry.amount || 0),
-          category: entry.category || 'Uncategorized',
-          note: entry.note || '',
-          date: parsedDate || new Date().toISOString().split('T')[0],
-          createdAt: entry.createdAt || new Date().toISOString()
+
+    if (data.ok) {
+      // 1. Sync Settings (Categories, Budgets, Income, Fixed Bills, Presets)
+      if (data.settings && typeof data.settings === 'object') {
+        state.settings = {
+          ...state.settings,
+          ...data.settings,
+          webhookUrl: state.settings.webhookUrl || data.settings.webhookUrl || ''
         };
-      });
+      }
 
-      // Merge cloud transactions with local transactions without duplicating
-      const mergedMap = new Map();
-      [...state.transactions, ...cloudTransactions].forEach((item) => {
-        const key = `${item.date}_${item.type}_${item.amount}_${item.category}_${item.note}`;
-        if (!mergedMap.has(key)) {
-          mergedMap.set(key, item);
-        }
-      });
+      // 2. Sync Transactions
+      if (Array.isArray(data.entries) && data.entries.length > 0) {
+        const cloudTransactions = data.entries.map((entry) => {
+          let parsedDate = entry.date;
+          if (parsedDate && parsedDate.includes('T')) {
+            parsedDate = parsedDate.split('T')[0];
+          }
+          return {
+            id: entry.id || generateId(),
+            type: (entry.type || 'expense').toLowerCase(),
+            amount: Number(entry.amount || 0),
+            category: entry.category || 'Uncategorized',
+            note: entry.note || '',
+            date: parsedDate || new Date().toISOString().split('T')[0],
+            createdAt: entry.createdAt || new Date().toISOString()
+          };
+        });
 
-      state.transactions = Array.from(mergedMap.values());
+        const mergedMap = new Map();
+        [...state.transactions, ...cloudTransactions].forEach((item) => {
+          const key = `${item.date}_${item.type}_${item.amount}_${item.category}_${item.note}`;
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, item);
+          }
+        });
+
+        state.transactions = Array.from(mergedMap.values());
+      }
+
       saveState();
       renderAll();
-      console.log('Successfully synced with Google Sheets cloud data!');
+      console.log('Successfully synced settings & entries with Google Sheets!');
     }
   } catch (error) {
     console.warn('Could not fetch cloud data, using local cache instead.', error);
@@ -1177,6 +1202,17 @@ async function postToGoogleSheets(payload) {
     return true;
   } catch (error) {
     throw error;
+  }
+}
+
+async function syncSettingsToGoogleSheets() {
+  try {
+    await postToGoogleSheets({
+      action: 'saveSettings',
+      settings: state.settings
+    });
+  } catch (error) {
+    console.warn('Failed to sync settings to cloud', error);
   }
 }
 
@@ -1264,7 +1300,7 @@ function importFromCsv(event) {
           state.settings.budgets[entry.category] = { weekly: 0, monthly: 0 };
         }
       });
-      saveState();
+      saveState(true);
       renderAll();
       showToast('CSV imported.');
     } catch (error) {
